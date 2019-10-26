@@ -1,3 +1,9 @@
+#[cfg(test)]
+extern crate quickcheck;
+#[cfg(test)]
+#[macro_use(quickcheck)]
+extern crate quickcheck_macros;
+
 extern crate rand;
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
@@ -305,7 +311,7 @@ fn neighbor_cell_indices(
 }
 
 #[cfg(test)]
-mod tests {
+mod unit_tests {
     use super::*;
     #[test]
     fn land_on_already_visited_sends_prev_dug() {
@@ -410,54 +416,27 @@ mod tests {
         let point = Point::try_from((1, 1)).unwrap();
         assert_eq!(model.num_neighboring_mines(point), 3);
     }
+}
 
-    #[test]
-    fn neighbor_indices_for_corners() {
-        // top left corner
-        let point = Point::try_from((0, 0)).unwrap();
-        let mut iter = neighbor_cell_indices(point).map(Point::into);
-        assert_eq!(iter.next(), Some((0, 1)));
-        assert_eq!(iter.next(), Some((1, 0)));
-        assert_eq!(iter.next(), Some((1, 1)));
-        assert_eq!(iter.next(), None);
+#[cfg(test)]
+mod properties {
+    use super::*;
+    use quickcheck::{Arbitrary, Gen};
 
-        // bottom left corner
-        let point = Point::try_from((0, COLUMNS - 1)).unwrap();
-        let mut iter = neighbor_cell_indices(point).map(Point::into);
-        assert_eq!(iter.next(), Some((0, COLUMNS - 2)));
-        assert_eq!(iter.next(), Some((1, COLUMNS - 2)));
-        assert_eq!(iter.next(), Some((1, COLUMNS - 1)));
-        assert_eq!(iter.next(), None);
-
-        // top right corner
-        let point = Point::try_from((ROWS - 1, 0)).unwrap();
-        let mut iter = neighbor_cell_indices(point).map(Point::into);
-        assert_eq!(iter.next(), Some((ROWS - 2, 0)));
-        assert_eq!(iter.next(), Some((ROWS - 2, 1)));
-        assert_eq!(iter.next(), Some((ROWS - 1, 1)));
-        assert_eq!(iter.next(), None);
-
-        // bottom right corner
-        let point = Point::try_from((ROWS - 1, COLUMNS - 1)).unwrap();
-        let mut iter = neighbor_cell_indices(point).map(Point::into);
-        assert_eq!(iter.next(), Some((ROWS - 2, COLUMNS - 2)));
-        assert_eq!(iter.next(), Some((ROWS - 2, COLUMNS - 1)));
-        assert_eq!(iter.next(), Some((ROWS - 1, COLUMNS - 2)));
-        assert_eq!(iter.next(), None);
+    impl Arbitrary for Point {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let x = (g.next_u32() % ROWS as u32) as usize;
+            let y = (g.next_u32() % COLUMNS as u32) as usize;
+            Point { x, y }
+        }
     }
 
-    #[test]
-    fn neighbor_indices_for_middlepoint() {
-        let point = Point::try_from((1, 3)).unwrap();
-        let mut iter = neighbor_cell_indices(point).map(Point::into);
-        assert_eq!(iter.next(), Some((0, 2)));
-        assert_eq!(iter.next(), Some((0, 3)));
-        assert_eq!(iter.next(), Some((0, 4)));
-        assert_eq!(iter.next(), Some((1, 2)));
-        assert_eq!(iter.next(), Some((1, 4)));
-        assert_eq!(iter.next(), Some((2, 2)));
-        assert_eq!(iter.next(), Some((2, 3)));
-        assert_eq!(iter.next(), Some((2, 4)));
-        assert_eq!(iter.next(), None);
+    #[quickcheck]
+    fn neighbor_cells_indices_are_all_one_away(p: Point) -> bool {
+        neighbor_cell_indices(p).all(|Point { x, y }| {
+            let x_diff = ((x as i32) - (p.x as i32)).abs();
+            let y_diff = ((y as i32) - (p.y as i32)).abs();
+            x_diff <= 1 && y_diff <= 1
+        })
     }
 }
