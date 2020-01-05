@@ -32,12 +32,16 @@ fn game_loop(mut model: Model) -> io::Result<()> {
                 continue;
             }
         };
-        let update_msg = model.update(point);
-        print!("{}{}", model, String::from(update_msg));
-        io::stdout().flush()?;
-        match update_msg {
-            UpdateMsg::Lose | UpdateMsg::Win => break,
-            _ => (),
+        let try_update_msg = model.update(point);
+        match try_update_msg {
+            None => println!("Enter valid coordinates of 0-9"),
+            Some(update_msg) => {
+                print!("{}{}", model, String::from(update_msg));
+                io::stdout().flush()?;
+                if let UpdateMsg::Lose | UpdateMsg::Win = update_msg {
+                    break;
+                }
+            }
         }
     }
 
@@ -59,7 +63,6 @@ pub struct Point {
 pub enum PointError {
     NeedXAndYCoords,
     NaN,
-    InvalidRange,
 }
 
 impl TryFrom<&str> for Point {
@@ -70,22 +73,16 @@ impl TryFrom<&str> for Point {
             Err(Self::Error::NeedXAndYCoords)
         } else {
             match (coords[0].clone(), coords[1].clone()) {
-                // only accepts numbers in range 0 - 9
-                (Ok(x), Ok(y)) => Point::try_from((x, y)),
+                (Ok(x), Ok(y)) => Ok(Point::from((x, y))),
                 _ => Err(Self::Error::NaN),
             }
         }
     }
 }
 
-impl TryFrom<(usize, usize)> for Point {
-    type Error = PointError;
-    fn try_from((x, y): (usize, usize)) -> Result<Self, Self::Error> {
-        if x < ROWS && y < COLUMNS {
-            Ok(Self { x, y })
-        } else {
-            Err(Self::Error::InvalidRange)
-        }
+impl From<(usize, usize)> for Point {
+    fn from((x, y): (usize, usize)) -> Self {
+        Self { x, y }
     }
 }
 
@@ -108,7 +105,6 @@ impl From<PointError> for String {
             PointError::NeedXAndYCoords | PointError::NaN => {
                 "Supply two numbers, seperated by a space"
             }
-            PointError::InvalidRange => "Supply two numbers with values between 0 and 9",
         })
     }
 }
@@ -223,20 +219,24 @@ impl Model {
         Self { minefield }
     }
 
-    fn get(&self, point: Point) -> &GameEntity {
-        &self.minefield[point.x][point.y]
+    fn get(&self, point: Point) -> Option<&GameEntity> {
+        self.minefield.get(point.x).and_then(|row| row.get(point.y))
     }
 
-    fn get_mut(&mut self, point: Point) -> &mut GameEntity {
-        &mut self.minefield[point.x][point.y]
+    fn get_mut(&mut self, point: Point) -> Option<&mut GameEntity> {
+        self.minefield
+            .get_mut(point.x)
+            .and_then(|row| row.get_mut(point.y))
     }
 
     fn visit(&mut self, point: Point, mine_count: u8) {
-        *self.get_mut(point) = GameEntity::Empty(mine_count);
+        if let Some(cell) = self.get_mut(point) {
+            *cell = GameEntity::Empty(mine_count);
+        }
     }
 
-    pub fn update(&mut self, point: Point) -> UpdateMsg {
-        match self.get(point) {
+    pub fn update(&mut self, point: Point) -> Option<UpdateMsg> {
+        Some(match self.get(point)? {
             GameEntity::Mine => UpdateMsg::Lose,
             GameEntity::NotVisited => {
                 self.flood_fill(point);
@@ -247,7 +247,7 @@ impl Model {
                 }
             }
             GameEntity::Empty(_) => UpdateMsg::PreviouslyDug,
-        }
+        })
     }
 
     fn exists_winner(&self) -> bool {
@@ -285,11 +285,15 @@ impl Model {
     }
 
     fn is_mine(&self, point: Point) -> bool {
-        *self.get(point) == GameEntity::Mine
+        self.get(point)
+            .map(|cell| *cell == GameEntity::Mine)
+            .unwrap_or(false)
     }
 
     fn have_not_visited(&self, point: Point) -> bool {
-        *self.get(point) == GameEntity::NotVisited
+        self.get(point)
+            .map(|cell| *cell == GameEntity::NotVisited)
+            .unwrap_or(false)
     }
 }
 
@@ -300,14 +304,14 @@ fn neighbor_cell_indices(
         y: start_y,
     }: Point,
 ) -> impl Iterator<Item = Point> {
-    // ensure we don't panic on subtracting from 0
-    let x_min = start_x.checked_sub(1).unwrap_or(0);
-    let y_min = start_y.checked_sub(1).unwrap_or(0);
+    // ensure we don't panic on subtracting from 0 on an unsigned type
+    let x_min = start_x.saturating_sub(1);
+    let y_min = start_y.saturating_sub(1);
 
     (x_min..=(start_x + 1))
         .flat_map(move |x| (y_min..=(start_y + 1)).map(move |y| (x, y)))
         .filter(move |(x, y)| *x != start_x || *y != start_y)
-        .filter_map(|(x, y)| Point::try_from((x, y)).ok())
+        .map(Point::from)
 }
 
 #[cfg(test)]
@@ -320,7 +324,7 @@ mod unit_tests {
         let mut model = Model::from(grid);
         let point = Point::try_from((4, 5)).unwrap();
         let msg = model.update(point);
-        assert_eq!(msg, UpdateMsg::PreviouslyDug);
+        assert_eq!(msg, Some(UpdateMsg::PreviouslyDug));
     }
 
     #[test]
@@ -330,7 +334,7 @@ mod unit_tests {
         let mut model = Model::from(grid);
         let point = Point::try_from((1, 1)).unwrap();
         let msg = model.update(point);
-        assert_eq!(msg, UpdateMsg::Continue);
+        assert_eq!(msg, Some(UpdateMsg::Continue));
     }
 
     #[test]
@@ -340,7 +344,7 @@ mod unit_tests {
         let mut model = Model::from(grid);
         let point = Point::try_from((3, 4)).unwrap();
         let msg = model.update(point);
-        assert_eq!(msg, UpdateMsg::Lose);
+        assert_eq!(msg, Some(UpdateMsg::Lose));
     }
 
     #[test]
