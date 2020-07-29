@@ -236,11 +236,11 @@ impl Model {
 // produces all valid indices that are 1 hop away from the present point
 fn neighbor_cell_indices((start_x, start_y): Point) -> impl Iterator<Item = Point> {
     // ensure we don't panic on subtracting from 0 on an unsigned type
-    let (x_min, x_max) = (start_x.saturating_sub(1), (start_x + 1).max(COLUMNS - 1));
-    let (y_min, y_max) = (start_y.saturating_sub(1), (start_y + 1).max(ROWS - 1));
+    let (x_min, x_max) = (start_x.saturating_sub(1), (start_x + 1).min(COLUMNS - 1));
+    let (y_min, y_max) = (start_y.saturating_sub(1), (start_y + 1).min(ROWS - 1));
 
-    (x_min..=(start_x + 1).min(COLUMNS - 1))
-        .flat_map(move |x| (y_min..=(start_y + 1).min(ROWS - 1)).map(move |y| (x, y)))
+    (x_min..=x_max)
+        .flat_map(move |x| (y_min..=y_max).map(move |y| (x, y)))
         .filter(move |(x, y)| *x != start_x || *y != start_y)
         .map(Point::from)
 }
