@@ -242,7 +242,6 @@ fn neighbor_cell_indices((start_x, start_y): Point) -> impl Iterator<Item = Poin
     (x_min..=x_max)
         .flat_map(move |x| (y_min..=y_max).map(move |y| (x, y)))
         .filter(move |(x, y)| *x != start_x || *y != start_y)
-        .map(Point::from)
 }
 
 #[cfg(test)]
